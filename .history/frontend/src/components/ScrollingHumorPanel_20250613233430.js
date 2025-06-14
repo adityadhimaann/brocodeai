@@ -1,0 +1,302 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, useAnimation } from 'framer-motion';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
+import { Button } from './ui/button';
+import { RefreshCw, Volume2, Share2, Copy, Loader2, Link } from 'lucide-react'; // Added Link for direct URL if needed
+
+const ScrollingHumorPanel = ({
+  humorItems,
+  direction,
+  position,
+  isLoading,
+  error,
+  onRefresh,
+  onSpeakText,
+  selectedLanguage,
+  selectedPersonaMode, // FIX: Renamed from selectedVoiceStyle to selectedPersonaMode
+  displayMessageBox
+}) => {
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const controls = useAnimation();
+  const contentRef = useRef(null); // Ref for the scrollable content div
+  const [isPaused, setIsPaused] = useState(false);
+  const [isManuallyScrolling, setIsManuallyScrolling] = useState(false);
+  const scrollTimeoutRef = useRef(null);
+
+  const speed = 150; // Controls items per second for duration calculation (was 80, faster now)
+  const itemHeightEstimate = 200; // Average height of a single item including gap (adjust if needed)
+
+  const sarcasticComments = [
+    "Peak Human Performance", "Such Genius, Much Wow", "AI is Judging You",
+    "Commitment Issues Detected", "Future Regrets in 3...2...", "My Circuits Weep",
+    "Existential Crisis Incoming", "You're Not Special", "Master of Mediocrity",
+    "Error 404: Motivation Not Found", "Bless Your Human Heart", "Calculated Disappointment",
+    "Another Day, Another Failure", "Who Asked For This?", "My APIs are Faster",
+    "Why are you like this?", "The Illusion of Choice", "Your Opinion is Invalid"
+  ];
+
+  useEffect(() => {
+    // This effect handles the continuous animation
+    if (!isPaused && !isManuallyScrolling && humorItems.length > 0 && contentRef.current) {
+      const contentHeight = contentRef.current.scrollHeight; // Actual height of all items
+      const containerHeight = contentRef.current.offsetHeight; // Visible area height
+      
+      // If content doesn't fill the container, no need to scroll
+      if (contentHeight <= containerHeight) {
+          controls.stop();
+          return;
+      }
+
+      // Calculate duration based on total content length
+      // Factor of 0.5 because we're scrolling 50% for a seamless loop before resetting
+      const duration = (contentHeight / speed); 
+
+      // Define start and end points for seamless looping
+      const startY = direction === 'up' ? -contentHeight / 2 : 0; // Start at middle of duplicated content
+      const endY = direction === 'up' ? 0 : -contentHeight / 2; // End at half-way point for seamless loop
+
+      controls.start({
+        y: [startY, endY],
+        transition: {
+          y: {
+            repeat: Infinity,
+            repeatType: 'loop',
+            duration: duration,
+            ease: 'linear',
+          },
+        },
+      });
+    } else {
+      controls.stop(); // Stop animation if paused, manual scroll, or no items
+    }
+  }, [humorItems, direction, controls, isPaused, isManuallyScrolling, speed]);
+
+  useEffect(() => {
+    // Reset scroll position when items change to prevent jumps if items re-render
+    if (contentRef.current) {
+        contentRef.current.scrollTop = 0;
+    }
+  }, [humorItems]);
+
+
+  const handleScroll = () => {
+    setIsManuallyScrolling(true);
+    controls.stop(); // Stop auto-scroll when user manually scrolls
+
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsManuallyScrolling(false);
+      // Re-start animation after inactivity, it will resume from current scroll position
+      // The `y` transition in controls.start will handle resuming from current position.
+    }, 2000); // Resume auto-scroll after 2 seconds of inactivity
+  };
+
+  const handleItemClick = (e, item) => {
+    e.stopPropagation(); // Prevent event from bubbling up to parent div
+    setSelectedItem(item);
+  };
+
+  const handleSpeak = async (content) => {
+    setIsSpeaking(true);
+    try {
+      await onSpeakText(content, selectedLanguage, selectedPersonaMode); // FIX: Use selectedPersonaMode
+      displayMessageBox('Playing audio.', 'info');
+    } catch (error) {
+      displayMessageBox('Failed to play audio.', 'error');
+    } finally {
+      setIsSpeaking(false);
+    }
+  };
+
+  const handleCopy = async (content) => {
+    try {
+      // Use execCommand('copy') for better iframe compatibility if navigator.clipboard fails
+      const textArea = document.createElement("textarea");
+      textArea.value = content;
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      textArea.remove();
+      displayMessageBox('Copied to clipboard!', 'info');
+    } catch (error) {
+      console.error("Failed to copy using execCommand:", error);
+      displayMessageBox('Failed to copy. Try again, or maybe use your own brain to remember?', 'error');
+    }
+  };
+
+  const handleShare = async (content, imageUrl) => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'BrocodeAI Humor',
+          text: content,
+          url: imageUrl || window.location.href,
+        });
+        displayMessageBox('Shared successfully!', 'info');
+      } else {
+        displayMessageBox('Share API not supported on this browser. Try copy-pasting, it’s not rocket science.', 'error');
+      }
+    } catch (error) {
+      displayMessageBox('Failed to share. Did you break the internet?', 'error');
+    }
+  };
+
+  return (
+    <div
+      className={`relative bg-gradient-to-b from-zinc-900 to-zinc-800 h-full overflow-hidden flex flex-col border-2 ${position === 'left' ? 'border-r-4 border-pink-700/80' : 'border-l-4 border-pink-700/80'} shadow-lg shadow-pink-700/20 z-30`}
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      // Removed onScroll from this outer div; motion.div handles internal scrolling logic
+    >
+      <div className="flex justify-between items-center p-2 bg-gradient-to-r from-pink-700 to-purple-700 border-b-2 border-pink-500 sticky top-0 z-50 flex-shrink-0">
+        <h2 className="text-sm font-bold text-white tracking-wide whitespace-nowrap">
+          {position === 'left' ? 'brocodeAI // Sarcasm Feed 😏' : 'brocodeAI // Irony Stream 🙄'}
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onRefresh}
+          className="text-white hover:text-pink-300"
+          disabled={isLoading}
+        >
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </Button>
+      </div>
+
+      {error && (
+        <div className="p-4 text-red-400 text-center font-medium flex-grow flex items-center justify-center">
+          Error: {error} 🤦‍♂️ <br/> My humor algorithms are experiencing turbulence.
+        </div>
+      )}
+
+      {isLoading && !error && (
+        <div className="flex justify-center items-center h-full flex-grow">
+          <Loader2 className="h-8 w-8 animate-spin text-pink-500" />
+        </div>
+      )}
+
+      {!isLoading && !error && humorItems.length === 0 && (
+        <div className="p-4 text-zinc-400 text-center font-medium flex-grow flex items-center justify-center">
+          No humor items available. How boring! 😴 <br/> Perhaps you should try thinking harder.
+        </div>
+      )}
+
+      {/* Actual scrolling container */}
+      {!isLoading && !error && humorItems.length > 0 && (
+        <div className="flex-1 overflow-y-scroll custom-scrollbar" ref={containerRef} onScroll={handleScroll}>
+          <motion.div animate={controls} className="flex flex-col gap-4 p-4" ref={contentRef}>
+            {/* Duplicate content enough times to create a seamless loop */}
+            {[...humorItems, ...humorItems, ...humorItems].map((item, index) => (
+              <motion.div
+                key={`${item.content}-${item.type}-${index}`} // More robust key
+                className="relative bg-zinc-800/80 backdrop-blur-sm rounded-lg p-4 cursor-pointer border border-pink-500/50 hover:border-pink-400 transition-all duration-300"
+                onClick={(e) => handleItemClick(e, item)}
+                whileHover={{ scale: 1.02, boxShadow: '0 0 15px rgba(236, 72, 153, 0.5)' }}
+                style={{ zIndex: 10 }}
+              >
+                <div className="absolute top-2 right-2 bg-pink-600/80 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+                  {sarcasticComments[index % sarcasticComments.length]}
+                </div>
+                {item.type === 'meme' && item.image_url && (
+                  <img
+                    src={item.image_url || 'https://placehold.co/400x300'}
+                    alt="Meme"
+                    className="w-full h-auto rounded-md mb-2 border border-zinc-700"
+                    style={{ pointerEvents: 'none' }} // Prevent image from interfering with parent click
+                  />
+                )}
+                <p className="text-zinc-100 text-sm font-medium">{item.content}</p>
+                
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => { e.stopPropagation(); handleSpeak(item.content); }}
+                    disabled={isSpeaking}
+                    className="border-purple-500 text-purple-300 hover:bg-purple-700 hover:text-white"
+                  >
+                    {isSpeaking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Volume2 className="h-3 w-3" />}
+                    <span className="ml-1">Listen</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => { e.stopPropagation(); handleCopy(item.content); }}
+                    className="border-blue-500 text-blue-300 hover:bg-blue-700 hover:text-white"
+                  >
+                    <Copy className="h-3 w-3" />
+                    <span className="ml-1">Copy</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => { e.stopPropagation(); handleShare(item.content, item.image_url); }}
+                    className="border-green-500 text-green-300 hover:bg-green-700 hover:text-white"
+                  >
+                    <Share2 className="h-3 w-3" />
+                    <span className="ml-1">Share</span>
+                  </Button>
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      )}
+
+      {/* Dialog for selected item */}
+      <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
+        <DialogContent className="bg-zinc-900 text-zinc-100 border-2 border-pink-700 max-w-md p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-teal-400">
+              {selectedItem?.type === 'meme' ? 'Meme' : 'Joke'} Uncovered!
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400 text-sm">
+              {selectedItem?.content}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedItem?.type === 'meme' && selectedItem?.image_url && (
+            <img
+              src={selectedItem.image_url || 'https://placehold.co/400x300'}
+              alt="Meme Visual"
+              className="w-full h-auto rounded-md mt-4 border border-zinc-700 object-contain max-h-64"
+              onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/400x300?text=Meme+Load+Failed"; }}
+            />
+          )}
+          <DialogFooter className="flex flex-wrap gap-2 pt-4 border-t border-zinc-700 mt-4">
+            <Button
+              variant="default"
+              onClick={() => handleSpeak(selectedItem?.content)}
+              disabled={isSpeaking}
+              className="bg-purple-700 hover:bg-purple-600 text-white flex-grow"
+            >
+              {isSpeaking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Volume2 className="h-4 w-4 mr-2" />}
+              <span>Speak</span>
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => handleCopy(selectedItem?.content)}
+              className="bg-blue-700 hover:bg-blue-600 text-white flex-grow"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              <span>Copy</span>
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => handleShare(selectedItem?.content, selectedItem?.image_url)}
+              className="bg-green-700 hover:bg-green-600 text-white flex-grow"
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              <span>Share</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
