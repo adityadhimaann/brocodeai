@@ -1,6 +1,0 @@
-flask
-flask-cors
-python-dotenv
-google-cloud-speech
-google-cloud-texttospeech
-google-generativeai
